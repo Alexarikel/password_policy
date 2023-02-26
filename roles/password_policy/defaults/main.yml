@@ -1,0 +1,27 @@
+---
+# defaults file for password_policy
+password_expiration_file: /etc/login.defs
+password_complexity_file: /etc/security/pwquality.conf
+faillock_policy_file: /etc/pam.d/common-auth
+
+# password complexity
+minlen: 8
+lcredit: -1
+ucredit: -1
+dcredit: -1
+ocredit: -1
+minclass: 4
+
+# password history
+remember: 5
+
+# password expiration
+PASS_MAX_DAYS: 90
+PASS_MIN_DAYS: 6
+PASS_MIN_LEN: 8
+PASS_WARN_AGE: 7
+
+# faillock policy
+deny: 2
+fail_interval: 60
+unlock_time: 60

@@ -1,0 +1,169 @@
+---
+# tasks file for password_policy
+- name: Set password policy
+  include_vars: ../defaults/main.yml
+
+- name: Allow passwordless sudo
+  lineinfile:
+    path: /etc/sudoers
+    state: present
+    regexp: "^%sudo"
+    line: "%sudo ALL=(ALL) NOPASSWD: ALL"
+    validate: "visudo -cf %s"
+
+- name: check OS version
+  debug: var=ansible_distribution
+
+- name: Install pam package on ubuntu
+  ansible.builtin.apt:
+    pkg:
+    - libpam-pwquality
+    update_cache: yes
+    state: latest
+  when: ansible_distribution == "Ubuntu"
+
+- name: Enforce Password Complexity for Ubuntu
+  lineinfile: 
+     backup: yes
+     state: present
+     dest: '{{ password_complexity_file }}'
+     regexp: '^{{ item.search }}'
+     line: '{{ item.replace }}'
+  with_items:
+      - { search: 'minlen', replace: 'minlen = {{ minlen }}' }
+      - { search: 'lcredit', replace: 'lcredit = {{ lcredit }}' }
+      - { search: 'ucredit', replace: 'ucredit = {{ ucredit }}' }
+      - { search: 'dcredit', replace: 'dcredit = {{ dcredit }}' }
+      - { search: 'ocredit', replace: 'ocredit = {{ ocredit }}' }
+      - { search: 'minclass', replace: 'minclass = {{ minclass }}' }
+  when: ansible_distribution == "Ubuntu"
+
+- name: Enforce Password Expiration for Ubuntu
+  lineinfile:
+     backup: yes
+     state: present
+     dest: '{{ password_expiration_file }}'
+     regexp: '^{{ item.search }}'
+     line: '{{ item.replace }}'
+  with_items:
+      - { search: 'PASS_MAX_DAYS', replace: 'PASS_MAX_DAYS  {{ PASS_MAX_DAYS }}' }
+      - { search: 'PASS_MIN_DAYS', replace: 'PASS_MIN_DAYS  {{ PASS_MIN_DAYS }}' }
+      - { search: 'PASS_MIN_LEN', replace: 'PASS_MIN_LEN  {{ PASS_MIN_LEN }}' }
+      - { search: 'PASS_WARN_AGE', replace: 'PASS_WARN_AGE  {{ PASS_WARN_AGE }}' }
+  when: ansible_distribution == "Ubuntu"
+
+- name: Enforce Password History for Ubuntu
+  pamd:
+    name: common-password
+    type: password
+    control: '[success=1 default=ignore]'
+    module_path: pam_unix.so
+    module_arguments:
+     - 'remember={{ remember }}'
+    state: args_present
+  when: ansible_distribution == "Ubuntu"
+
+- name: Enforce Password Complexity for CentOS 7
+  lineinfile: 
+     backup: yes
+     state: present
+     dest: '{{ password_complexity_file }}'
+     regexp: '^{{ item.search }}'
+     line: '{{ item.replace }}'
+  with_items:
+      - { search: 'minlen', replace: 'minlen = {{ minlen }}' }
+      - { search: 'lcredit', replace: 'lcredit = {{ lcredit }}' }
+      - { search: 'ucredit', replace: 'ucredit = {{ ucredit }}' }
+      - { search: 'dcredit', replace: 'dcredit = {{ dcredit }}' }
+      - { search: 'ocredit', replace: 'ocredit = {{ ocredit }}' }
+      - { search: 'minclass', replace: 'minclass = {{ minclass }}' }
+  when: ansible_distribution == "CentOS"
+
+- name: Enforce Password Expiration for CentOS 7
+  lineinfile: 
+     backup: yes
+     state: present
+     dest: '{{ password_expiration_file }}'
+     regexp: '^{{ item.search }}'
+     line: '{{ item.replace }}'
+  with_items:
+      - { search: 'PASS_MAX_DAYS', replace: 'PASS_MAX_DAYS  {{ PASS_MAX_DAYS }}' }
+      - { search: 'PASS_MIN_DAYS', replace: 'PASS_MIN_DAYS  {{ PASS_MIN_DAYS }}' }
+      - { search: 'PASS_MIN_LEN', replace: 'PASS_MIN_LEN  {{ PASS_MIN_LEN }}' }
+      - { search: 'PASS_WARN_AGE', replace: 'PASS_WARN_AGE  {{ PASS_WARN_AGE }}' }
+  when: ansible_distribution == "CentOS"
+
+- name: Enforce Password History for CentOS 7
+  pamd:
+    name: system-auth
+    type: password
+    control: sufficient 
+    module_path: pam_unix.so
+    module_arguments:
+     - 'remember={{ remember }}'
+    state: args_present
+  when: ansible_distribution == "CentOS"
+
+- name: Use faillock.conf template
+  ansible.builtin.template:
+    backup: true
+    src: faillock.conf.j2
+    dest: /etc/security/faillock.conf
+    mode: "0644"
+  when: ansible_distribution == "Ubuntu"
+
+- name: Insert a new preauth pam.d rule before an existing rule
+  pamd:
+    backup: true
+    name: common-auth
+    type: auth
+    control: '[success=1 default=ignore]'
+    module_path: pam_unix.so
+    new_type: auth
+    new_control: required
+    new_module_path: pam_faillock.so
+    module_arguments: 'preauth audit'
+    state: before
+  when: ansible_distribution == "Ubuntu"
+
+- name: Insert a new preauth pam.d rule before an existing rule (if sssd existing)
+  pamd:
+    backup: true
+    name: common-auth
+    type: auth
+    control: '[success=2 default=ignore]'
+    module_path: pam_unix.so
+    new_type: auth
+    new_control: required
+    new_module_path: pam_faillock.so
+    module_arguments: 'preauth audit'
+    state: before
+  when: ansible_distribution == "Ubuntu"
+    
+- name: Insert a new authsucc pam.d rule before an existing rule
+  pamd:
+    backup: true
+    name: common-auth
+    type: auth
+    control: requisite
+    module_path: pam_deny.so
+    new_type: auth
+    new_control: sufficient
+    new_module_path: pam_faillock.so
+    module_arguments: 'authsucc audit'
+    state: before
+  when: ansible_distribution == "Ubuntu"
+
+- name: Insert a new authfail pam.d rule before an existing rule
+  pamd:
+    backup: true
+    name: common-auth
+    type: auth
+    control: sufficient
+    module_path: pam_faillock.so
+    new_type: auth
+    new_control: '[default=die]'
+    new_module_path: pam_faillock.so
+    module_arguments: 'authfail audit'
+    state: before
+  when: ansible_distribution == "Ubuntu"

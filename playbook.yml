@@ -1,0 +1,12 @@
+---
+- name: Password policy
+  hosts: all
+  vars_files:
+    - credentials.yml
+  become: true
+  gather_facts: yes
+
+  roles:
+    - password_policy
+
+  
